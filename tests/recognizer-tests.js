@@ -450,3 +450,66 @@ test("Getting a handler for an invalid named route raises", function() {
         router.handlersFor("nope");
     }, /There is no route named nope/);
 });
+
+test("Hydrate state", function() {
+  var handler1 = { handler: 1 };
+  var handler2 = { handler: 2 };
+  var router = new RouteRecognizer();
+
+  router.add([{ path: "/foo/:bar", handler: handler1 }]);
+  router.add([{ path: "/bar/:baz", handler: handler2 }]);
+
+  var state = router.serialize();
+
+  router.rootState = null;
+
+  var e = inflateState(state);
+  router.hydrate(e);
+
+  resultsMatch(router.recognize("/foo/bar"), [{ handler: handler1, params: { bar: "bar" }, isDynamic: true }]);
+  resultsMatch(router.recognize("/bar/1"), [{ handler: handler2, params: { baz: "1" }, isDynamic: true }]);
+});
+
+function inflateNextStates(nextStates) {
+  return nextStates.map(function(item) {
+    if (typeof item === 'string') {
+
+      item = eval(item);
+      item.nextStates = inflateNextStates(item.nextStates);
+    }
+
+    if (item.charSpecs && Object.keys(item.charSpecs).length > 0) {
+      item.charSpecs = inflateCharSpecs(item.charSpecs);
+    }
+
+    return item;
+  });
+}
+
+function inflateCharSpecs(charSpecs) {
+  var ret = {};
+  Object.keys(charSpecs).forEach(function(path) {
+    var item = charSpecs[path];
+    if (typeof item === 'string') {
+      item = eval(item);
+      item.charSpecs = inflateCharSpecs(item.charSpecs);
+    }
+
+    if (item.nextStates && item.nextStates.length > 0) {
+      item.nextStates = inflateNextStates(item.nextStates);
+    }
+
+    ret[path] = item;
+  });
+
+  return ret;
+}
+
+function inflateState(state) {
+  var e = eval(state);
+
+  e.nextStates = inflateNextStates(e.nextStates);
+  e.charSpecs = inflateCharSpecs(e.charSpecs);
+
+  return e;
+}
